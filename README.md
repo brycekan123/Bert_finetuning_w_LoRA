@@ -14,12 +14,12 @@ To maintain **efficiency** and stay within **tight GPU constraints**, I used **e
 - [`google/bert_uncased_L-2_H-128_A-2`](https://huggingface.co/google/bert_uncased_L-2_H-128_A-2) — A mini BERT variant with 2 layers, 128 hidden size, 2 attention heads.
 - [`prajjwal1/bert-tiny`](https://huggingface.co/prajjwal1/bert-tiny) — One of the smallest publicly available BERT models. 
 
-These models were intentionally chosen to explore **how much performance improvement** can be gained from **LoRA-based fine-tuning**, even when starting with minimal model capacity. Large models might perform well by default on AG News, but my goal was to see how far we could push these constrained models with efficient adaptation.
+These models were chosen for their efficiency on limited GPU availability and potential for strong performance. Rather than relying on large models that can complete AG_news tasks easily, the goal was to push smaller models as far as possible using LoRA.
 
 ---
 ## 🧩 What is LoRA?
 
-**LoRA (Low-Rank Adaptation)** is a parameter-efficient fine-tuning technique designed for large language models (LLMs). Instead of updating the full weight matrices during training (which is memory and compute-intensive), LoRA **freezes the original model weights** and injects **learnable low-rank matrices** into certain layers (typically attention projections like `query` and `value`).
+**LoRA (Low-Rank Adaptation)** is a parameter-efficient fine-tuning technique designed for LLMs. Instead of updating the full weight matrices during training, LoRA **freezes the original model weights** and injects **learnable low-rank matrices** into certain layers (typically attention projections like `query` and `value`).
 
 This allows fine-tuning large models with **dramatically fewer trainable parameters** and **lower GPU memory usage**.
 
@@ -30,16 +30,24 @@ This allows fine-tuning large models with **dramatically fewer trainable paramet
 Given a frozen weight matrix `W` (e.g., for a linear layer), LoRA adds a low-rank update using two trainable matrices `A` and `B`:
 
 ![Screenshot 2025-06-03 at 3 57 51 PM](https://github.com/user-attachments/assets/d89b6917-9c4e-4d29-a2ea-d77577bb62e8)
-https://www.determined.ai/blog/lora-parameters
+
+Taken Screeshot from [this article.](https://www.determined.ai/blog/lora-parameters). Great read!
 
 Where:
 - W: Original weight matrix(frozen)
-- A ∈ R^{d_out × r}
-- B ∈ R^{r × d_in}
+- A ∈ R^{d_out × r} (updated matrices)
+- B ∈ R^{r × d_in} (updated matrices)
 - $\alpha$: scaling factor
 - \( r \): rank (bottleneck size)
 
-This low-rank matrix product approximates a full-rank update to `W` while keeping parameter count low.
+Instead of updating the full weight matrix `W`, LoRA learns two smaller matrices: `A`, `B `
+
+- These form a low-rank approximation of the update: A x B
+- This update is scaled by a factor `α / r` and added to the original frozen weights:
+- This approach drastically reduces the number of trainable parameters while maintaining expressiveness.
+- Example: If d_out = 10 and d_in = 10, number of parameters that need to be updated is 100.
+  But with LoRA, if we set r to 2, A contains 10x2 = 20 and B contains 2x10 = 20. Total Parameters needed to update is 40. 
+In big picture, LoRA would only update 0.1-1% of model's parameters, drastically decreasing GPU usage/memory
 
 ---
 
@@ -96,23 +104,29 @@ With LoRA:
   - Base accuracy: ~17%  
   - **LoRA fine-tuned accuracy: ~87%**  
   - → **~70% improvement**
-  
+ 
+Loss Curve
+
 - **BERT-Tiny:**  
   - Base accuracy: ~24.8%  
   - **LoRA fine-tuned accuracy: ~87%**  
   - → **~62% improvement**
+ 
+![Screenshot 2025-06-03 at 4 32 27 PM](https://github.com/user-attachments/assets/bea29ec2-941e-42b5-8cc9-35543e08d89d)
+Loss Curve
+
+![Screenshot 2025-06-03 at 4 34 12 PM](https://github.com/user-attachments/assets/46270590-bda3-4c99-bfaf-c186ae81cde9)
+
+<img width="1449" alt="screenshots of accuracies" src="https://github.com/user-attachments/assets/27cce484-c47f-4e14-80d7-b2ea6ab206a1" />
+Predictions were done to visually see improvement of fine-tuned model
+<img width="1449" alt="Predictions_readme2" src="https://github.com/user-attachments/assets/45dcd482-0864-4d28-b043-b1bb7edae70c" />
 
 #### Notes
 
-- Training loss curves between base and LoRA-fine-tuned models looked nearly identical.
-- Indicates that **loss is not always an indicator of learning** — LoRA shifts representations effectively even when base model "appears" to converge.
+- Training loss curves between both google and prajjwal1 LoRA-fine-tuned models looked nearly identical. I wonder if this is something I missed when picking models to train
 - Given more GPU time, accuracy could likely be improved further by scaling model size or experimenting with deeper architectures.
 
 
-<img width="573" alt="screenshots of accuracies" src="https://github.com/user-attachments/assets/27cce484-c47f-4e14-80d7-b2ea6ab206a1" />
-![bert_uncased_trainingLoss](https://github.com/user-attachments/assets/10adec8f-0871-45b2-8997-7e9b80d80a74)
-![bert-tiny_trainingLoss](https://github.com/user-attachments/assets/eebe0128-b504-4266-84f3-d17703121f2c)
-<img width="1454" alt="Predictions" src="https://github.com/user-attachments/assets/dad10455-5546-4dc3-af2d-65edbe1f8432" />
 ---
 
 ### 2️⃣ How do different LoRA hyperparameters affect model behavior and convergence efficiency?
@@ -120,12 +134,12 @@ With LoRA:
 #### Setup
 - This is done in HyperParameterComparison.ipnyb
 - Created a grid of:
-  - `r ∈ {4, 16, 32}`
-  - `alpha ∈ {64, 256, 512}`
+  - `r ∈ {8, 16, 32}`
+  - `alpha ∈ {256, 512}`
   - Fixed dropout = 0.0 for consistency
 - Evaluated convergence time, final accuracy, and training stability.
 
-#### Findings
+#### Results
 
 ##### BERT-Uncased
 
@@ -136,29 +150,13 @@ With LoRA:
 ##### BERT-Tiny
 
 - **Unstable behavior** observed at **high rank + low alpha** settings.
-  - Suggests **optimization difficulty due to over-parameterization** relative to base model capacity.
 - Best setting: `rank=32`, `alpha=512` — stable convergence and good accuracy.
 
-![ConvergenceStepComparisons](https://github.com/user-attachments/assets/14b55653-ebcf-4d03-a530-86135350b2bd)
-
----
-
-## ⚙️ Efficiency vs Accuracy Tradeoff
-
-| Model         | Base Accuracy | Best LoRA Accuracy | Trainable Params (LoRA) | Notes                             |
-|---------------|----------------|---------------------|---------------------------|-----------------------------------|
-| BERT-Uncased  | ~25%           | ~87%                | Low                       | Rapid improvement with LoRA       |
-| BERT-Tiny     | ~25%           | ~88%                | Low                       | Sensitive to r/alpha combinations |
-
-- **LoRA enables massive accuracy gains** with very few additional parameters.
-- However, **higher ranks increase training time and memory** — diminishing returns must be weighed carefully.
-
-
+![ConvergenceStepComparisons2](https://github.com/user-attachments/assets/073f472f-fc0b-4d4b-8157-02dfdb5ce548)
 ---
 
 ## 💡 Key Takeaways
 
 - **LoRA works extremely well** for even the smallest transformer models on classification tasks.
 - Even **tiny BERTs can match large model performance** on AG News with the right adaptation strategy.
-- **Training dynamics vary drastically** between models — smaller models are more sensitive to LoRA hyperparameters.
-- **GPU constraints** force tradeoffs between coverage (number of experiments) and
+- Both models have identical learning loss and training behavior even though various hyperameters lead to varation in convergence step... This can be a future topic of interest!
