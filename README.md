@@ -1,4 +1,4 @@
-# 🛠️🤖🔧 Efficient Fine-Tuning of Tiny BERT Models with LoRA on AG News
+# 🛠️🤖🔧 Efficient Fine-Tuning of Light Weight BERT Models with LoRA on AG News
 ## 🏃‍♂️💨 To run files
 - HyperParameterComparison.ipnyb should run fine on google collab using t4 GPU
 - FinalPredict_FineTune.py requires `pip install torch transformers datasets peft scikit-learn wandb tabulate`.
