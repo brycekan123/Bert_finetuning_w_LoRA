@@ -1,5 +1,5 @@
 # 🔍 Efficient Fine-Tuning of Tiny BERT Models with LoRA on AG News
-#  To run files
+##  To run files
 - HyperParameterComparison.ipnyb should run fine on google collab using t4 GPU
 - FinalPredict_FineTune.py requires `pip install torch transformers datasets peft scikit-learn wandb tabulate`.
 - In some cases, you may need to also `pip install --upgrade datasets`.
